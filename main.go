@@ -3,6 +3,7 @@ package main
 import (
 	"io/ioutil"
 	"log"
+	"mvdan.cc/xurls/v2"
 	"net/http"
 	"strings"
 
@@ -29,18 +30,26 @@ func main() {
 			if !pass {
 				return
 			}
-			successful := false
-			hasTitle := false
-			var title string
 
-			if strings.Contains(m.Text, "http") {
+			rx := xurls.Relaxed()
+			urls := rx.FindAllString(m.Text, -1)
+			log.Println("verbose: ", urls)
+
+			for _, url := range urls {
+				if url[0:4] != "http" {
+					url = "http://" + url
+				}
+				successful := false
+				hasTitle := false
+				var title string
+
 				// get title
 				count := 10
 				for {
 					if count <= 0 {
 						break
 					}
-					resp, err := http.Get(m.Text)
+					resp, err := http.Get(url)
 					if err != nil {
 						log.Println("err: http ", err)
 						count--
@@ -48,28 +57,32 @@ func main() {
 					}
 					var ok bool
 					// TODO: maybe we can get web content to telegraph ?
-					title, ok = GetHtmlTitle(resp.Body)
+
+					if strings.Contains(url, "mp.weixin.qq.com"){
+						title, ok = GetHtmlTitleWechat(resp.Body)
+					} else {
+						title, ok = GetHtmlTitle(resp.Body)
+					}
 					resp.Body.Close()
 					if ok {
-						log.Println("verbose: add:", m.Text, title)
 						hasTitle = true
-					} else {
-						log.Println("verbose: add:", m.Text)
-						log.Println("verbose: get title failed")
 					}
 					successful = true
 					break
 				}
-			}
-			if successful {
-				addTask(m.Text, title)
-				if hasTitle {
-					Sendln(m.Sender, "Added: "+title, m.Text, menu)
+				if successful {
+					addTask(url, title)
+					if hasTitle {
+						log.Println("verbose: add:", url, title)
+						Send(m.Sender, "Added: "+title+" "+url, menu, tb.NoPreview)
+					} else {
+						log.Println("verbose: add:", url)
+						log.Println("verbose: get title failed")
+						Send(m.Sender, "Added: "+url, "Get titles failed.", menu, tb.NoPreview)
+					}
 				} else {
-					Send(m.Sender, "Added: "+m.Text, "Get titles failed.", menu)
+					Sendln(m.Sender, "Add URL failed.", url)
 				}
-			} else {
-				Sendln(m.Sender, "Add URL failed.", menu)
 			}
 		})
 
@@ -81,7 +94,7 @@ func main() {
 				log.Println("verbose: history", err)
 				Send(m.Sender, "历史记录为空", menu)
 			} else {
-				Send(m.Sender, string(bytes), menu)
+				Send(m.Sender, string(bytes), menu, tb.NoPreview)
 			}
 		})
 
@@ -96,6 +109,39 @@ func main() {
 			Send(m.Sender, output, menu, tb.NoPreview)
 		})
 
-		menu.Reply(menu.Row(btnView), menu.Row(btnHistory))
+		// manage tasks
+		manageTasksMarkup := &tb.ReplyMarkup{}
+		var rmBtn tb.Btn = manageTasksMarkup.Data("删除", "remove")
+		var bottomBtn tb.Btn = manageTasksMarkup.Data("置底", "bottom")
+		manageTasksMarkup.Inline(
+			manageTasksMarkup.Row(rmBtn, bottomBtn),
+		)
+
+		btnManage := menu.Text("队列管理")
+		bot.Handle(&btnManage, func(m *tb.Message) {
+			for _, task := range Tasks {
+				Send(m.Sender, task.URL, manageTasksMarkup)
+			}
+		})
+
+		bot.Handle(&rmBtn, func(c *tb.Callback) {
+			// Always respond!
+			bot.Respond(c, &tb.CallbackResponse{})
+
+			url := strings.Trim(c.Message.Text, " ")
+			finishTask(url)
+			Sendln(c.Sender, "rm:", url)
+		})
+
+		bot.Handle(&bottomBtn, func(c *tb.Callback) {
+			// Always respond!
+			bot.Respond(c, &tb.CallbackResponse{})
+
+			url := strings.Trim(c.Message.Text, " ")
+			setLastTask(url)
+			Sendln(c.Sender, "pinned:", url)
+		})
+
+		menu.Reply(menu.Row(btnView), menu.Row(btnManage), menu.Row(btnHistory))
 	})
 }

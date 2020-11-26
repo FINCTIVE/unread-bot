@@ -1,3 +1,5 @@
 config.yaml
 tasks.json
 history.log
+assets/bot
+.idea/

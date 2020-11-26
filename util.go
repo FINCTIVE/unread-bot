@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os/exec"
+	"strings"
 	"time"
 
 	"golang.org/x/net/context"
@@ -15,10 +16,6 @@ import (
 
 var globalBot *tb.Bot
 var GlobalConfig Config
-
-// if the message is too long, cut it into pieces
-// and send seperately
-const LongMessageLength = 700
 
 // Launch loads the yaml configuration file, and start the bot.
 func Launch(load func(bot *tb.Bot)) {
@@ -46,31 +43,58 @@ func Launch(load func(bot *tb.Bot)) {
 	globalBot.Start()
 }
 
+// if the message is too long, cut it into pieces
+// and send seperately
+const LongMessageLength = 700
+const maxRetry = 1000
+
 // Send sends message. If failed, retry until it's successful.
 // (to deal with poor network problem ...)
 // Also, Send split long message to small pieces. (Telegram has message length limit.)
 // and send them seperately.
 func Send(sender *tb.User, message string, options ...interface{}) {
-	if message == "" {
+	lines := strings.Split(message, "\n")
+	if message == "" || len(lines) == 0 {
 		log.Println("verbose: sending empty message, quit...")
 		return
 	}
 
 	var msgs []string
+	splitDone := false
 	for {
-		if len(message) > LongMessageLength {
-			msgs = append(msgs, message[:LongMessageLength])
-			message = message[LongMessageLength:]
-		} else {
-			msgs = append(msgs, message)
+		var newMessage string
+		for {
+			if len(newMessage)+len(lines[0])+1 < LongMessageLength {
+				newMessage += lines[0] + "\n"
+				lines = lines[1:]
+				if len(lines) == 0 {
+					msgs = append(msgs, newMessage)
+					splitDone = true
+					break
+				}
+			} else {
+				msgs = append(msgs, newMessage)
+				break
+			}
+		}
+		if splitDone {
 			break
 		}
 	}
 
+	retryCounter := 0
 	for {
 		_, err := globalBot.Send(sender, msgs[0], options...)
 		if err != nil {
+			log.Println("err: send:", msgs[0])
 			log.Println(err)
+			retryCounter++
+			if retryCounter >= maxRetry {
+				log.Println("err: send: tried ", maxRetry, " times. Give it up.")
+				// for errors not related with network
+				_, _ = globalBot.Send(sender, "Messages not sent, pls check your terminal log.", options...)
+				break
+			}
 		} else {
 			if len(msgs) == 1 {
 				break
