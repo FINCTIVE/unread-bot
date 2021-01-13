@@ -1,11 +1,14 @@
-功能：
+I found that the Telegram Saved Messages is a better tool for unread links. 
 
-- 发送链接，自动添加链接到未读列表
-- 未读列表管理
-- 历史记录
+But it is not posible to find deleted links. So I developed this bot! 
 
-相关博文：[在树莓派上部署 Telegram Bot](https://finctive.com/2020-11-telegram-bot-and-pi/)
+feature:
 
-相关模板：[FINCTIVE/telebot-pi-template](https://github.com/FINCTIVE/telebot-pi-template)
+- Send messages to the bot, it will remember all the links included in the message.
+- View history links.
+- When you finish reading, just delete that massage.
+- When you send a long message to the bot with many links, the bot will reply each of the links one by one. (import)
 
-![截图](https://user-images.githubusercontent.com/31786061/100351251-1e4a2c00-3026-11eb-84f0-93b1e0969e67.png)
+Related post：[在树莓派上部署 Telegram Bot](https://finctive.com/2020-11-telegram-bot-and-pi/)
+
+Template：[FINCTIVE/telebot-pi-template](https://github.com/FINCTIVE/telebot-pi-template)
