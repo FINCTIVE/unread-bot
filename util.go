@@ -45,7 +45,7 @@ func Launch(load func(bot *tb.Bot)) {
 
 // if the message is too long, cut it into pieces
 // and send seperately
-const LongMessageLength = 700
+const LongMessageLength = 4000
 const maxRetry = 1000
 
 // Send sends message. If failed, retry until it's successful.

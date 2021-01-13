@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"log"
 	"mvdan.cc/xurls/v2"
 	"net/http"
@@ -10,13 +9,21 @@ import (
 	tb "gopkg.in/tucnak/telebot.v2"
 )
 
+// If the received message has more than 5 urls,
+// the bot will reply each of the urls one by one,
+// because this is regarded as an importing action.
+const startReplyURL = 5
+// can only review the latest history
+// but all history urls will be stored in the file.
+const historyLength = 60
+
 func main() {
 	Launch(func(bot *tb.Bot) {
-		initTask()
+		initStorage()
 
 		menu := &tb.ReplyMarkup{ResizeReplyKeyboard: true}
 
-		bot.Handle("/hello", func(m *tb.Message) {
+		bot.Handle("/start", func(m *tb.Message) {
 			pass := CheckUser(m.Sender)
 			if !pass {
 				return
@@ -44,7 +51,7 @@ func main() {
 				var title string
 
 				// get title
-				count := 10
+				count := 3
 				for {
 					if count <= 0 {
 						break
@@ -55,93 +62,52 @@ func main() {
 						count--
 						continue
 					}
-					var ok bool
-					// TODO: maybe we can get web content to telegraph ?
 
 					if strings.Contains(url, "mp.weixin.qq.com"){
-						title, ok = GetHtmlTitleWechat(resp.Body)
+						title, hasTitle = GetHtmlTitleWechat(resp.Body)
 					} else {
-						title, ok = GetHtmlTitle(resp.Body)
+						title, hasTitle = GetHtmlTitle(resp.Body)
 					}
-					resp.Body.Close()
-					if ok {
-						hasTitle = true
-					}
+					_ = resp.Body.Close()
+
 					successful = true
 					break
 				}
-				if successful {
-					addTask(url, title)
-					if hasTitle {
-						log.Println("verbose: add:", url, title)
-						Send(m.Sender, "Added: "+title+" "+url, menu, tb.NoPreview)
-					} else {
-						log.Println("verbose: add:", url)
-						log.Println("verbose: get title failed")
-						Send(m.Sender, "Added: "+url, "Get titles failed.", menu, tb.NoPreview)
-					}
-				} else {
-					Sendln(m.Sender, "Add URL failed.", url)
+
+				if !successful {
+					log.Println("error: the link can not be reached.")
+				}
+
+				addLink(url, title)
+				log.Println("verbose: add:", url, title)
+				if !hasTitle {
+					log.Println("verbose: get title failed")
+				}
+
+				if len(urls) > startReplyURL {
+					Send(m.Sender, url, menu)
 				}
 			}
 		})
 
-		// view history
-		btnHistory := menu.Text("历史记录")
+		btnHistory := menu.Text("History")
 		bot.Handle(&btnHistory, func(m *tb.Message) {
-			bytes, err := ioutil.ReadFile("history.log")
-			if err != nil {
-				log.Println("verbose: history", err)
-				Send(m.Sender, "历史记录为空", menu)
-			} else {
-				Send(m.Sender, string(bytes), menu, tb.NoPreview)
+			pass := CheckUser(m.Sender)
+			if !pass {
+				return
 			}
-		})
-
-		// view tasks
-		btnView := menu.Text("未读列表")
-		bot.Handle(&btnView, func(m *tb.Message) {
-			output := ""
-			for _, task := range Tasks {
-				output += task.Title + "\n"
-				output += "=> " + task.URL + "\n\n"
+			output := "Latest history: ...\n"
+			startIndex := len(Links) - historyLength
+			if startIndex < 0 {
+				startIndex = 0
+			}
+			for i := startIndex; i <= len(Links) - 1; i++ {
+				output += Links[i].Title + "\n"
+				output += "=> " + Links[i].URL + "\n\n"
 			}
 			Send(m.Sender, output, menu, tb.NoPreview)
 		})
 
-		// manage tasks
-		manageTasksMarkup := &tb.ReplyMarkup{}
-		var rmBtn tb.Btn = manageTasksMarkup.Data("删除", "remove")
-		var bottomBtn tb.Btn = manageTasksMarkup.Data("置底", "bottom")
-		manageTasksMarkup.Inline(
-			manageTasksMarkup.Row(rmBtn, bottomBtn),
-		)
-
-		btnManage := menu.Text("队列管理")
-		bot.Handle(&btnManage, func(m *tb.Message) {
-			for _, task := range Tasks {
-				Send(m.Sender, task.URL, manageTasksMarkup)
-			}
-		})
-
-		bot.Handle(&rmBtn, func(c *tb.Callback) {
-			// Always respond!
-			bot.Respond(c, &tb.CallbackResponse{})
-
-			url := strings.Trim(c.Message.Text, " ")
-			finishTask(url)
-			Sendln(c.Sender, "rm:", url)
-		})
-
-		bot.Handle(&bottomBtn, func(c *tb.Callback) {
-			// Always respond!
-			bot.Respond(c, &tb.CallbackResponse{})
-
-			url := strings.Trim(c.Message.Text, " ")
-			setLastTask(url)
-			Sendln(c.Sender, "pinned:", url)
-		})
-
-		menu.Reply(menu.Row(btnView), menu.Row(btnManage), menu.Row(btnHistory))
+		menu.Reply(menu.Row(btnHistory))
 	})
 }
