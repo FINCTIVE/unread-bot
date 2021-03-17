@@ -13,6 +13,7 @@ import (
 // the bot will reply each of the urls one by one,
 // because this is regarded as an importing action.
 const startReplyURL = 5
+
 // can only review the latest history
 // but all history urls will be stored in the file.
 const historyLength = 60
@@ -22,14 +23,6 @@ func main() {
 		initStorage()
 
 		menu := &tb.ReplyMarkup{ResizeReplyKeyboard: true}
-
-		bot.Handle("/start", func(m *tb.Message) {
-			pass := CheckUser(m.Sender)
-			if !pass {
-				return
-			}
-			Send(m.Sender, "hello!"+m.Sender.LastName+" "+m.Sender.LastName, menu)
-		})
 
 		// add url
 		bot.Handle(tb.OnText, func(m *tb.Message) {
@@ -63,7 +56,7 @@ func main() {
 						continue
 					}
 
-					if strings.Contains(url, "mp.weixin.qq.com"){
+					if strings.Contains(url, "mp.weixin.qq.com") {
 						title, hasTitle = GetHtmlTitleWechat(resp.Body)
 					} else {
 						title, hasTitle = GetHtmlTitle(resp.Body)
@@ -90,8 +83,7 @@ func main() {
 			}
 		})
 
-		btnHistory := menu.Text("History")
-		bot.Handle(&btnHistory, func(m *tb.Message) {
+		bot.Handle("/history", func(m *tb.Message) {
 			pass := CheckUser(m.Sender)
 			if !pass {
 				return
@@ -101,13 +93,28 @@ func main() {
 			if startIndex < 0 {
 				startIndex = 0
 			}
-			for i := startIndex; i <= len(Links) - 1; i++ {
+			for i := startIndex; i <= len(Links)-1; i++ {
 				output += Links[i].Title + "\n"
 				output += "=> " + Links[i].URL + "\n\n"
 			}
 			Send(m.Sender, output, menu, tb.NoPreview)
 		})
 
-		menu.Reply(menu.Row(btnHistory))
+		bot.Handle("/hello", func(m *tb.Message) {
+			pass := CheckUser(m.Sender)
+			if !pass {
+				return
+			}
+			Send(m.Sender, "hello!"+m.Sender.LastName+" "+m.Sender.LastName, menu)
+		})
+
+		err := bot.SetCommands(
+			[]tb.Command{
+				{"/hello", "hello"},
+				{"/history", "view url history"},
+			})
+		if err != nil {
+			log.Println(err)
+		}
 	})
 }
